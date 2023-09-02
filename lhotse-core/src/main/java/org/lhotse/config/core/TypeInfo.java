@@ -3,6 +3,8 @@ package org.lhotse.config.core;
 import java.util.Set;
 
 public interface TypeInfo {
+
+    String path();
 }
 
 /**

@@ -1,5 +1,6 @@
 package org.lhotse.config.core;
 
+import org.lhotse.config.core.annotations.SingleConfig;
 import org.lhotse.config.core.annotations.StorageConfig;
 
 import java.util.*;
@@ -33,7 +34,7 @@ public class GlobalDataStorage {
         return Optional.empty();
     }
 
-    <Config extends ISingleStorage> Optional<Config> getSingleConfig(Class<Config> clazz) {
+    <Config extends Record> Optional<Config> getSingleConfig(Class<Config> clazz) {
         return Optional.empty();
     }
 
@@ -61,7 +62,8 @@ public class GlobalDataStorage {
                 }
                 var annotation = type.getAnnotation(StorageConfig.class);
                 var path = annotation.path();
-                if (ISingleStorage.class.isAssignableFrom(type)) {
+                var singleConfig = type.getAnnotation(SingleConfig.class);
+                if (singleConfig != null) {
                     if (!singleTypeMap.containsKey(path)) {
                         singleTypeMap.put(path, new HashSet<>());
                     }

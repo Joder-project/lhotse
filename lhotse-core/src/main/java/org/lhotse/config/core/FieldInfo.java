@@ -2,13 +2,20 @@ package org.lhotse.config.core;
 
 public interface FieldInfo {
 
-    Object getRealValue(DataContainer container, Object rawValue);
+    String name();
+
+    Object getRealValue(DataContainer container, String rawValue);
 }
 
 class NormalFieldInfo implements FieldInfo{
 
     @Override
-    public Object getRealValue(DataContainer container, Object rawValue) {
+    public String name() {
+        return null;
+    }
+
+    @Override
+    public Object getRealValue(DataContainer container, String rawValue) {
         return null;
     }
 }
@@ -16,7 +23,12 @@ class NormalFieldInfo implements FieldInfo{
 class DependenceFieldInfo implements FieldInfo{
 
     @Override
-    public Object getRealValue(DataContainer container, Object rawValue) {
+    public String name() {
+        return null;
+    }
+
+    @Override
+    public Object getRealValue(DataContainer container, String rawValue) {
         return null;
     }
 }
@@ -24,7 +36,12 @@ class DependenceFieldInfo implements FieldInfo{
 class CustomFieldInfo implements FieldInfo{
 
     @Override
-    public Object getRealValue(DataContainer container, Object rawValue) {
+    public String name() {
+        return null;
+    }
+
+    @Override
+    public Object getRealValue(DataContainer container, String rawValue) {
         return null;
     }
 }
