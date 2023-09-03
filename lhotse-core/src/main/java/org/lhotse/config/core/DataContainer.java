@@ -1,13 +1,18 @@
 package org.lhotse.config.core;
 
 import org.lhotse.config.core.annotations.SingleConfig;
+import org.lhotse.config.core.exception.LhotseException;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.RecordComponent;
 import java.util.*;
+import java.util.stream.Collectors;
 
+@SuppressWarnings("rawtypes")
 class DataContainer {
 
-    final Map<Class<?>, List<ConfigData>> multiConfigData;
-    final Map<Class<?>, ConfigData> singleConfigData;
+    final Map<Class<?>, Map<?, IConfig>> multiConfigData;
+    final Map<Class<?>, ISingleStorage> singleConfigData;
 
     DataContainer() {
         this.multiConfigData = Collections.emptyMap();
@@ -15,8 +20,12 @@ class DataContainer {
     }
 
 
-    DataContainer(Map<Class<?>, List<ConfigData>> multiConfigData, Map<Class<?>, ConfigData> singleConfigData) {
-        this.multiConfigData = multiConfigData;
+    DataContainer(Map<Class<?>, List<IConfig>> multiConfigData, Map<Class<?>, ISingleStorage> singleConfigData) {
+        Map<Class<?>, Map<?, IConfig>> map = new HashMap<>();
+        multiConfigData.forEach((k, v) -> {
+            map.put(k, v.stream().collect(Collectors.toUnmodifiableMap(IConfig::id, e -> e)));
+        });
+        this.multiConfigData = Collections.unmodifiableMap(map);
         this.singleConfigData = singleConfigData;
     }
 
@@ -31,9 +40,7 @@ class DataContainer {
                 .readRaw()
                 .parseConfigData()
                 .parseNormalField()
-                .parseDependence()
-                .toObject()
-                .refresh();
+                .toObject();
     }
 
 
@@ -118,54 +125,46 @@ class DataContainer {
                                     Map<Class<?>, ConfigTypeInfo> typeInfo,
                                     DataContainer oldContainer) {
 
-        StepWithDependence parseNormalField() {
+        StepWithToObject parseNormalField() {
             Map<Class<?>, List<ConfigData>> multiConfigData = new HashMap<>();
             Map<Class<?>, ConfigData> singleConfigData = new HashMap<>();
+
             multiConfigData().forEach((cls, data) -> {
                 multiConfigData.put(cls, data.stream().map(e -> new ConfigData(cls, e, typeInfo.get(cls).fieldInfos())).toList());
             });
             singleConfigData().forEach((cls, data) -> singleConfigData.put(cls, new ConfigData(cls, data, typeInfo.get(cls).fieldInfos())));
-            return new StepWithDependence(multiConfigData, singleConfigData, oldContainer);
+            return new StepWithToObject(multiConfigData, singleConfigData, oldContainer);
         }
     }
 
-    /**
-     * 解析依赖字段
-     */
-    record StepWithDependence(Map<Class<?>, List<ConfigData>> multiConfigData,
-                              Map<Class<?>, ConfigData> singleConfigData,
-                              DataContainer oldContainer) {
-        StepWithToObject parseDependence() {
-            multiConfigData().values().stream().flatMap(Collection::stream)
-                    .forEach(ConfigData::initDependence);
-            singleConfigData.values().forEach(ConfigData::initDependence);
-            return new StepWithToObject(multiConfigData, singleConfigData);
-        }
-    }
 
     /**
      * 转换为数据
      */
     record StepWithToObject(
             Map<Class<?>, List<ConfigData>> multiConfigData,
-            Map<Class<?>, ConfigData> singleConfigData
+            Map<Class<?>, ConfigData> singleConfigData,
+            DataContainer oldContainer
     ) {
-        StepWithReplaceData toObject() {
-            multiConfigData().forEach((k, v) -> v.forEach(ConfigData::toObject));
-            singleConfigData().forEach((k, v) -> v.toObject());
-            return new StepWithReplaceData(multiConfigData(), singleConfigData());
-        }
-    }
-
-    /**
-     * 替换内存数据
-     */
-    record StepWithReplaceData(
-            Map<Class<?>, List<ConfigData>> multiConfigData,
-            Map<Class<?>, ConfigData> singleConfigData
-    ) {
-        DataContainer refresh() {
-            return new DataContainer(multiConfigData, singleConfigData);
+        @SuppressWarnings("rawtypes")
+        DataContainer toObject() {
+            final Map<Class<?>, List<IConfig>> multiConfigData = new HashMap<>();
+            final Map<Class<?>, ISingleStorage> singleConfigData = new HashMap<>();
+            oldContainer.multiConfigData.forEach((k, v) -> {
+                if (!multiConfigData().containsKey(k)) {
+                    multiConfigData.put(k, v.values().stream().toList());
+                }
+            });
+            oldContainer.singleConfigData.forEach((k, v) -> {
+                if (!singleConfigData().containsKey(k)) {
+                    singleConfigData.put(k, v);
+                }
+            });
+            multiConfigData().forEach((k, v) -> {
+                multiConfigData.put(k, v.stream().map(e -> ((IConfig) e.toObject())).toList());
+            });
+            singleConfigData().forEach((k, v) -> singleConfigData.put(k, v.toObject()));
+            return new DataContainer(Collections.unmodifiableMap(multiConfigData), Collections.unmodifiableMap(singleConfigData));
         }
     }
 
@@ -179,51 +178,52 @@ class DataContainer {
 
         final Map<String, String> rawData;
         final Map<String, Object> properties;
-
-        final DataContainer dataContainer;
-        /**
-         * 是否完成数据加载
-         */
-        boolean finishLoad;
         /**
          * 对应数据
          */
         Object data;
 
-        ConfigData(Class<?> clazz, Map<String, String> raw, Set<FieldInfo> fieldInfos, DataContainer container) {
+        ConfigData(Class<?> clazz, Map<String, String> raw, Set<FieldInfo> fieldInfos) {
             this.clazz = clazz;
             this.fieldInfos = fieldInfos;
             this.rawData = raw;
-            this.dataContainer = container;
             this.properties = initNormalField(raw);
         }
 
         Map<String, Object> initNormalField(Map<String, String> raw) {
             Map<String, Object> properties = new HashMap<>();
             fieldInfos.forEach(fieldInfo -> {
-                if (fieldInfo instanceof NormalFieldInfo || fieldInfo instanceof CustomFieldInfo) {
-                    var value = raw.get(fieldInfo.name());
-                    properties.put(fieldInfo.name(), fieldInfo.getRealValue(null, value));
-                }
+                var value = raw.get(fieldInfo.name());
+                properties.put(fieldInfo.name(), fieldInfo.getRealValue(null, value));
             });
             return properties;
         }
 
-        void initDependence() {
-            if (finishLoad) {
-                return;
-            }
-            finishLoad = true;
-        }
-
         @SuppressWarnings("unchecked")
         <T> T toObject() {
-            if (!finishLoad) {
-                initDependence();
+            if (data == null) {
+                data = inject();
             }
-            if (data != null) {
-                return (T) data;
+            return (T) data;
+        }
+
+        Object inject() {
+            var recordComponents = clazz.getRecordComponents();
+            Object[] args = new Object[recordComponents.length];
+            Class<?>[] argsType = new Class<?>[recordComponents.length];
+            int i = 0;
+            for (RecordComponent recordComponent : recordComponents) {
+                args[i] = properties.get(recordComponent.getName());
+                argsType[i] = recordComponent.getType();
+                i++;
             }
+            try {
+                Constructor<?> constructor = clazz.getDeclaredConstructor(argsType);
+                return constructor.newInstance(args);
+            } catch (Exception ex) {
+                throw new LhotseException("生成对象异常", ex);
+            }
+
         }
     }
 }

@@ -4,17 +4,25 @@ import org.lhotse.config.core.annotations.SingleConfig;
 import org.lhotse.config.core.annotations.StorageConfig;
 
 import java.util.*;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * 保存全局配置表数据
  */
 public class GlobalDataStorage {
+    volatile TypeInfoParse typeInfoParse;
+
+    volatile DataContainer dataContainer = new DataContainer();
+
+    static final ReadWriteLock Lock = new ReentrantReadWriteLock();
 
     /**
      * 注册配置表
      */
     public void init(Set<Class<?>> types) {
-
+        this.typeInfoParse = new TypeInfoParse(types);
+        refresh(types);
     }
 
     /**
@@ -23,11 +31,34 @@ public class GlobalDataStorage {
      * @param types 类型
      */
     public void refresh(Set<Class<?>> types) {
+        Map<String, TypeInfo> configs = new HashMap<>();
+        for (Class<?> type : types) {
+            if (!type.isAnnotationPresent(StorageConfig.class)) {
+                throw new IllegalStateException("没有@StorageConfig注解, " + type.getName());
+            }
+            var annotation = type.getAnnotation(StorageConfig.class);
+            var path = annotation.path();
+
+            configs.put(path, Objects.requireNonNull(typeInfoParse.typeInfoMap.get(path)));
+        }
+        Lock.writeLock().lock();
+        try {
+
+            this.dataContainer = dataContainer.refresh(configs, typeInfoParse.configTypeInfo);
+        } finally {
+            Lock.writeLock().unlock();
+        }
 
     }
 
+    @SuppressWarnings("unchecked")
     <ID extends Comparable<ID>, Config extends IConfig<ID>> List<Config> listConfig(Class<Config> clazz) {
-        return Collections.emptyList();
+        var container = dataContainer;
+        if (!container.multiConfigData.containsKey(clazz)) {
+            return Collections.emptyList();
+        }
+        var list = container.multiConfigData.get(clazz);
+        return list.stream().map(e -> ((Config) e)).toList();
     }
 
     <ID extends Comparable<ID>, Config extends IConfig<ID>> Optional<Config> getConfig(Class<Config> clazz, ID id) {
@@ -38,23 +69,89 @@ public class GlobalDataStorage {
         return Optional.empty();
     }
 
+    /**
+     * 安全查询
+     * 保证查询时数据是安全的
+     */
+    public static <T1, T2> Tuple2<T1, T2> safeBatchQuery(Callable2<T1, T2> callable) {
+        Lock.readLock().lock();
+        try {
+            return callable.call();
+        } finally {
+            Lock.readLock().unlock();
+        }
+    }
 
+    /**
+     * 安全查询
+     * 保证查询时数据是安全的
+     */
+    public static <T1, T2, T3> Tuple3<T1, T2, T3> safeBatchQuery(Callable3<T1, T2, T3> callable) {
+        Lock.readLock().lock();
+        try {
+            return callable.call();
+        } finally {
+            Lock.readLock().unlock();
+        }
+    }
 
+    /**
+     * 安全查询
+     * 保证查询时数据是安全的
+     */
+    public static <T1, T2, T3, T4> Tuple4<T1, T2, T3, T4> safeBatchQuery(Callable4<T1, T2, T3, T4> callable) {
+        Lock.readLock().lock();
+        try {
+            return callable.call();
+        } finally {
+            Lock.readLock().unlock();
+        }
+    }
+
+    /**
+     * 安全查询
+     * 保证查询时数据是安全的
+     */
+    public static <T1, T2, T3, T4, T5> Tuple5<T1, T2, T3, T4, T5> safeBatchQuery(Callable5<T1, T2, T3, T4, T5> callable) {
+        Lock.readLock().lock();
+        try {
+            return callable.call();
+        } finally {
+            Lock.readLock().unlock();
+        }
+    }
+
+    /**
+     * 安全查询
+     * 保证查询时数据是安全的
+     */
+    public static <T1, T2, T3, T4, T5, T6> Tuple6<T1, T2, T3, T4, T5, T6> safeBatchQuery(Callable6<T1, T2, T3, T4, T5, T6> callable) {
+        Lock.readLock().lock();
+        try {
+            return callable.call();
+        } finally {
+            Lock.readLock().unlock();
+        }
+    }
 
 
     static class TypeInfoParse {
         /**
          * 多数据配置
          */
-        private final Map<Class<?>, TypeInfo> typeInfoMap;
-        /**
-         * 单数据配置
-         */
-        private final Map<String, SingleTypeInfo> singleTypeInfoMap;
+        final Map<String, TypeInfo> typeInfoMap;
+
+        final Map<Class<?>, ConfigTypeInfo> configTypeInfo;
+
 
         TypeInfoParse(Set<Class<?>> types) {
             // 解析配置表类型
-            Map<Class<?>, TypeInfo> typeInfoMap = new HashMap<>();
+            this.typeInfoMap = parsePathType(types);
+            this.configTypeInfo = parseConfig(types);
+        }
+
+        Map<String, TypeInfo> parsePathType(Set<Class<?>> types) {
+            Map<String, TypeInfo> typeInfoMap = new HashMap<>();
             Map<String, Set<Class<?>>> singleTypeMap = new HashMap<>();
             for (Class<?> type : types) {
                 if (!type.isAnnotationPresent(StorageConfig.class)) {
@@ -69,14 +166,60 @@ public class GlobalDataStorage {
                     }
                     singleTypeMap.get(path).add(type);
                 } else {
-                    typeInfoMap.put(type, new MultiTypeInfo(type, path));
+                    typeInfoMap.put(path, new MultiTypeInfo(type, path));
                 }
             }
-            Map<String, SingleTypeInfo> singleTypeInfoMap = new HashMap<>();
-            singleTypeMap.forEach((k, v) -> singleTypeInfoMap.put(k, new SingleTypeInfo(v, k)));
-            this.singleTypeInfoMap = singleTypeInfoMap;
-            this.typeInfoMap = typeInfoMap;
-            // 解析依赖关系
+            singleTypeMap.forEach((k, v) -> typeInfoMap.put(k, new SingleTypeInfo(v, k)));
+            return typeInfoMap;
         }
+
+        Map<Class<?>, ConfigTypeInfo> parseConfig(Set<Class<?>> types) {
+
+        }
+    }
+
+    public record Tuple2<T1, T2>(T1 t1, T2 t2) {
+
+    }
+
+    public record Tuple3<T1, T2, T3>(T1 t1, T2 t2, T3 t3) {
+
+    }
+
+    public record Tuple4<T1, T2, T3, T4>(T1 t1, T2 t2, T3 t3, T4 t4) {
+
+    }
+
+    public record Tuple5<T1, T2, T3, T4, T5>(T1 t1, T2 t2, T3 t3, T4 t4, T5 t5) {
+
+    }
+
+    public record Tuple6<T1, T2, T3, T4, T5, T6>(T1 t1, T2 t2, T3 t3, T4 t4, T5 t5, T6 t6) {
+
+    }
+
+    @FunctionalInterface
+    public interface Callable2<T1, T2> {
+        Tuple2<T1, T2> call();
+    }
+
+    @FunctionalInterface
+    public interface Callable3<T1, T2, T3> {
+        Tuple3<T1, T2, T3> call();
+    }
+
+    @FunctionalInterface
+    public interface Callable4<T1, T2, T3, T4> {
+        Tuple4<T1, T2, T3, T4> call();
+    }
+
+    @FunctionalInterface
+    public interface Callable5<T1, T2, T3, T4, T5> {
+        Tuple5<T1, T2, T3, T4, T5> call();
+    }
+
+    @FunctionalInterface
+    public interface Callable6<T1, T2, T3, T4, T5, T6> {
+        Tuple6<T1, T2, T3, T4, T5, T6> call();
     }
 }
