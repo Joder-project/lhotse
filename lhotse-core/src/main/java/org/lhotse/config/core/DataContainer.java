@@ -194,7 +194,7 @@ class DataContainer {
             Map<String, Object> properties = new HashMap<>();
             fieldInfos.forEach(fieldInfo -> {
                 var value = raw.get(fieldInfo.name());
-                properties.put(fieldInfo.name(), fieldInfo.getRealValue(null, value));
+                properties.put(fieldInfo.name(), fieldInfo.getRealValue(value));
             });
             return properties;
         }

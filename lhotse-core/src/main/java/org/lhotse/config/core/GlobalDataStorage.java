@@ -1,9 +1,12 @@
 package org.lhotse.config.core;
 
+import org.lhotse.config.core.annotations.Custom;
 import org.lhotse.config.core.annotations.SingleConfig;
 import org.lhotse.config.core.annotations.StorageConfig;
 
+import java.lang.reflect.RecordComponent;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -13,7 +16,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class GlobalDataStorage {
     volatile TypeInfoParse typeInfoParse;
 
-    volatile DataContainer dataContainer = new DataContainer();
+    volatile AtomicReference<DataContainer> dataContainer = new AtomicReference<>(new DataContainer());
 
     static final ReadWriteLock Lock = new ReentrantReadWriteLock();
 
@@ -43,8 +46,7 @@ public class GlobalDataStorage {
         }
         Lock.writeLock().lock();
         try {
-
-            this.dataContainer = dataContainer.refresh(configs, typeInfoParse.configTypeInfo);
+            this.dataContainer.set(dataContainer.get().refresh(configs, typeInfoParse.configTypeInfo));
         } finally {
             Lock.writeLock().unlock();
         }
@@ -53,20 +55,33 @@ public class GlobalDataStorage {
 
     @SuppressWarnings("unchecked")
     <ID extends Comparable<ID>, Config extends IConfig<ID>> List<Config> listConfig(Class<Config> clazz) {
-        var container = dataContainer;
+        var container = dataContainer.get();
         if (!container.multiConfigData.containsKey(clazz)) {
             return Collections.emptyList();
         }
-        var list = container.multiConfigData.get(clazz);
-        return list.stream().map(e -> ((Config) e)).toList();
+        var map = container.multiConfigData.get(clazz);
+        return map.values().stream()
+                .map(e -> ((Config) e))
+                .toList();
     }
 
+    @SuppressWarnings("unchecked")
     <ID extends Comparable<ID>, Config extends IConfig<ID>> Optional<Config> getConfig(Class<Config> clazz, ID id) {
-        return Optional.empty();
+        var container = dataContainer.get();
+        if (!container.multiConfigData.containsKey(clazz)) {
+            return Optional.empty();
+        }
+        var map = container.multiConfigData.get(clazz);
+        return Optional.ofNullable(((Config) map.get(id)));
     }
 
-    <Config extends Record> Optional<Config> getSingleConfig(Class<Config> clazz) {
-        return Optional.empty();
+    @SuppressWarnings("unchecked")
+    <Config extends ISingleStorage> Optional<Config> getSingleConfig(Class<Config> clazz) {
+        var container = dataContainer.get();
+        if (!container.singleConfigData.containsKey(clazz)) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(((Config) container.singleConfigData.get(clazz)));
     }
 
     /**
@@ -174,7 +189,24 @@ public class GlobalDataStorage {
         }
 
         Map<Class<?>, ConfigTypeInfo> parseConfig(Set<Class<?>> types) {
+            Map<Class<?>, ConfigTypeInfo> map = new HashMap<>();
+            for (Class<?> type : types) {
+                map.put(type, parseConfig(type));
+            }
+            return map;
+        }
 
+        ConfigTypeInfo parseConfig(Class<?> clazz) {
+            Set<FieldInfo> fieldInfos = new HashSet<>();
+            for (RecordComponent recordComponent : clazz.getRecordComponents()) {
+                var annotation = recordComponent.getAnnotation(Custom.class);
+                if (annotation == null) {
+                    fieldInfos.add(new NormalFieldInfo(recordComponent.getName(), recordComponent.getType()));
+                } else {
+                    fieldInfos.add(new CustomFieldInfo(recordComponent.getName(), recordComponent.getType(), annotation.convertor()));
+                }
+            }
+            return new ConfigTypeInfo(clazz, fieldInfos);
         }
     }
 
