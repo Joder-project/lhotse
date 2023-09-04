@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 @SupportedAnnotationTypes("org.lhotse.config.spring.GenerateStorage")
 @SupportedSourceVersion(SourceVersion.RELEASE_17)
 @AutoService(Processor.class)
-public class SpringEntityProcessor extends AbstractProcessor {
+public class SpringStorageProcessor extends AbstractProcessor {
 
     private Filer filer;
 
@@ -46,50 +46,51 @@ public class SpringEntityProcessor extends AbstractProcessor {
                     return name.substring(0, name.lastIndexOf("."));
                 })
                 .orElse(null);
-        var elements = roundEnv.getElementsAnnotatedWith(EnableLhotse.class).stream()
-                .filter(e -> e.getKind() == ElementKind.CLASS)
+        var elements = roundEnv.getElementsAnnotatedWith(GenerateStorage.class).stream()
+                .filter(e -> e.getKind() == ElementKind.RECORD)
                 .collect(Collectors.toSet());
         createConfiguration(elements, mainClass);
         return true;
     }
 
     void createConfiguration(Set<? extends Element> elements, String basePackage) {
+//        basePackage = elements.stream().findFirst()
+//                .map(e -> {
+//                    var name = e.toString();
+//                    return name.substring(0, name.lastIndexOf("."));
+//                })
+//                .orElse("org.lhotse.config.spring");
         if (basePackage == null) {
-            basePackage = elements.stream().findFirst()
-                    .map(e -> {
-                        var name = e.toString();
-                        return name.substring(0, name.lastIndexOf("."));
-                    })
-                    .orElse("org.manaslu.cache.spring");
+            return;
         }
         StringBuilder sb = new StringBuilder()
                 .append(String.format("""
                         package %s;
                                           
                         import java.util.*;
-                        import org.manaslu.cache.core.*;
+                        import org.lhotse.config.core.*;
                         import org.springframework.context.annotation.*;
                         import org.springframework.boot.autoconfigure.condition.*;
                                                 
                         @Configuration
-                        class SpringEntityGeneratorConfiguration {
+                        class SpringStorageGeneratorConfiguration {
                             
                         """, basePackage));
         List<String> classes = new ArrayList<>();
         for (Element element : elements) {
             sb.append(buildBeanMethod(((TypeElement) element), classes));
         }
-        sb.append(String.format("\tprivate final List<Class<? extends AbstractEntity<?>>> registerClasses = List.of(%s);\n", String.join(", ", classes)));
+        sb.append(String.format("\tprivate final Set<Class<?>> registerClasses = Set.of(%s);\n", String.join(", ", classes)));
         sb.append("""
                     
-                    SpringEntityGeneratorConfiguration(EntityTypeManager manager) {
-                        manager.registerTypes(registerClasses);
+                    SpringStorageGeneratorConfiguration(GlobalDataStorage manager) {
+                        manager.init(registerClasses);
                     }
                     
                 """);
         sb.append("}\n");
         try {
-            JavaFileObject source = filer.createSourceFile(basePackage + ".SpringEntityGeneratorConfiguration");
+            JavaFileObject source = filer.createSourceFile(basePackage + ".SpringStorageGeneratorConfiguration");
             Writer writer = source.openWriter();
             writer.write(sb.toString());
             writer.flush();
@@ -110,12 +111,22 @@ public class SpringEntityProcessor extends AbstractProcessor {
         String type = element.getQualifiedName().toString();
         String simpleName = element.getSimpleName().toString();
         classes.add(type + ".class");
-        return String.format("""
+        if (id.isEmpty()) {
+            return String.format("""
+                                            
+                        @Bean
+                        SingleStorage<%s> %sSingleStorage(StorageFactory factory){
+                            return factory.createSingle(%s.class);
+                        }
+                    """, type, simpleName, type);
+        } else {
+            return String.format("""
                                         
                     @Bean
-                    Repository<%s, %s> %sRepository(RepositoryFactory factory){
-                        return factory.getRepository(%s.class);
+                        Storage<%s, %s> %sStorage(StorageFactory factory){
+                            return factory.create(%s.class);
                     }
                 """, id, type, simpleName, type);
+        }
     }
 }

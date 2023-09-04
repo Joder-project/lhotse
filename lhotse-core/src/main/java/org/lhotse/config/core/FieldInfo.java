@@ -2,7 +2,7 @@ package org.lhotse.config.core;
 
 import org.lhotse.config.core.exception.LhotseException;
 
-public interface FieldInfo {
+interface FieldInfo {
 
     String name();
 
@@ -80,6 +80,9 @@ class CustomFieldInfo extends NormalFieldInfo {
 
     @Override
     public Object getRealValue(String rawValue) {
+        if (rawValue == null) {
+            return null;
+        }
         return convertor.encode(rawValue);
     }
 }

@@ -1,0 +1,4 @@
+server:
+  port: 8081
+lhotse:
+  config-root: 'D:\Source\Java\lhotse\example\lhotse-springboot-example\src\main\resources\config'

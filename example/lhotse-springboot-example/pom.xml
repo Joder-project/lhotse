@@ -10,15 +10,9 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
 
-    <groupId>org.lhotse</groupId>
-    <artifactId>lhotse-cache</artifactId>
+    <groupId>org.example</groupId>
+    <artifactId>lhotse-springboot-example</artifactId>
     <version>1.0-SNAPSHOT</version>
-    <packaging>pom</packaging>
-    <description>lhotse-config</description>
-    <modules>
-        <module>lhotse-core</module>
-        <module>lhotse-spring</module>
-    </modules>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
@@ -26,13 +20,33 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
+    <dependencies>
+
+        <dependency>
+            <groupId>org.lhotse</groupId>
+            <artifactId>lhotse-spring</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
     <dependencyManagement>
         <dependencies>
-            <dependency>
-                <groupId>org.lhotse</groupId>
-                <artifactId>lhotse-core</artifactId>
-                <version>1.0-SNAPSHOT</version>
-            </dependency>
             <dependency>
                 <groupId>org.lhotse</groupId>
                 <artifactId>lhotse-spring</artifactId>
@@ -41,11 +55,13 @@
         </dependencies>
     </dependencyManagement>
 
-    <repositories>
-        <repository>
-            <id>aliyun</id>
-            <name>aliyun</name>
-            <url>https://maven.aliyun.com/nexus/content/groups/public</url>
-        </repository>
-    </repositories>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
 </project>

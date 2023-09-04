@@ -177,7 +177,7 @@ class DataContainer {
         final Set<FieldInfo> fieldInfos;
 
         final Map<String, String> rawData;
-        final Map<String, Object> properties;
+        Map<String, Object> properties;
         /**
          * 对应数据
          */
@@ -203,6 +203,8 @@ class DataContainer {
         <T> T toObject() {
             if (data == null) {
                 data = inject();
+                // 释放内存
+                properties = null;
             }
             return (T) data;
         }

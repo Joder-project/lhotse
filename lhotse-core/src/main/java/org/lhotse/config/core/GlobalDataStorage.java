@@ -4,6 +4,7 @@ import org.lhotse.config.core.annotations.Custom;
 import org.lhotse.config.core.annotations.SingleConfig;
 import org.lhotse.config.core.annotations.StorageConfig;
 
+import java.io.File;
 import java.lang.reflect.RecordComponent;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -14,17 +15,27 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * 保存全局配置表数据
  */
 public class GlobalDataStorage {
+
+    /**
+     * 配置表根路径
+     */
+    final String basePath;
+
     volatile TypeInfoParse typeInfoParse;
 
     volatile AtomicReference<DataContainer> dataContainer = new AtomicReference<>(new DataContainer());
 
     static final ReadWriteLock Lock = new ReentrantReadWriteLock();
 
+    public GlobalDataStorage(String basePath) {
+        this.basePath = basePath;
+    }
+
     /**
      * 注册配置表
      */
     public void init(Set<Class<?>> types) {
-        this.typeInfoParse = new TypeInfoParse(types);
+        this.typeInfoParse = new TypeInfoParse(basePath, types);
         refresh(types);
     }
 
@@ -40,7 +51,7 @@ public class GlobalDataStorage {
                 throw new IllegalStateException("没有@StorageConfig注解, " + type.getName());
             }
             var annotation = type.getAnnotation(StorageConfig.class);
-            var path = annotation.path();
+            var path = new File(basePath, annotation.path()).getAbsolutePath();
 
             configs.put(path, Objects.requireNonNull(typeInfoParse.typeInfoMap.get(path)));
         }
@@ -159,13 +170,13 @@ public class GlobalDataStorage {
         final Map<Class<?>, ConfigTypeInfo> configTypeInfo;
 
 
-        TypeInfoParse(Set<Class<?>> types) {
+        TypeInfoParse(String basePath, Set<Class<?>> types) {
             // 解析配置表类型
-            this.typeInfoMap = parsePathType(types);
+            this.typeInfoMap = parsePathType(basePath, types);
             this.configTypeInfo = parseConfig(types);
         }
 
-        Map<String, TypeInfo> parsePathType(Set<Class<?>> types) {
+        Map<String, TypeInfo> parsePathType(String basePath, Set<Class<?>> types) {
             Map<String, TypeInfo> typeInfoMap = new HashMap<>();
             Map<String, Set<Class<?>>> singleTypeMap = new HashMap<>();
             for (Class<?> type : types) {
@@ -173,7 +184,8 @@ public class GlobalDataStorage {
                     throw new IllegalStateException("没有@StorageConfig注解, " + type.getName());
                 }
                 var annotation = type.getAnnotation(StorageConfig.class);
-                var path = annotation.path();
+                // 拼全路径
+                var path = new File(basePath, annotation.path()).getAbsolutePath();
                 var singleConfig = type.getAnnotation(SingleConfig.class);
                 if (singleConfig != null) {
                     if (!singleTypeMap.containsKey(path)) {

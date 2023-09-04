@@ -1,8 +1,6 @@
 package org.lhotse.config.core;
 
+// todo delete?
 public interface ISingleStorage {
-    /**
-     * 对应主键
-     */
-    String key();
+
 }
