@@ -12,7 +12,7 @@ import java.util.stream.Collectors;
 class DataContainer {
 
     final Map<Class<?>, Map<?, IConfig>> multiConfigData;
-    final Map<Class<?>, ISingleStorage> singleConfigData;
+    final Map<Class<?>, Object> singleConfigData;
 
     DataContainer() {
         this.multiConfigData = Collections.emptyMap();
@@ -20,7 +20,7 @@ class DataContainer {
     }
 
 
-    DataContainer(Map<Class<?>, List<IConfig>> multiConfigData, Map<Class<?>, ISingleStorage> singleConfigData) {
+    DataContainer(Map<Class<?>, List<IConfig>> multiConfigData, Map<Class<?>, Object> singleConfigData) {
         Map<Class<?>, Map<?, IConfig>> map = new HashMap<>();
         multiConfigData.forEach((k, v) -> {
             map.put(k, v.stream().collect(Collectors.toUnmodifiableMap(IConfig::id, e -> e)));
@@ -149,7 +149,7 @@ class DataContainer {
         @SuppressWarnings("rawtypes")
         DataContainer toObject() {
             final Map<Class<?>, List<IConfig>> multiConfigData = new HashMap<>();
-            final Map<Class<?>, ISingleStorage> singleConfigData = new HashMap<>();
+            final Map<Class<?>, Object> singleConfigData = new HashMap<>();
             oldContainer.multiConfigData.forEach((k, v) -> {
                 if (!multiConfigData().containsKey(k)) {
                     multiConfigData.put(k, v.values().stream().toList());

@@ -15,8 +15,8 @@ public class LhotseConfiguration {
         return new StorageFactory(dataStorage);
     }
 
-    @Bean
+    @Bean(destroyMethod = "close")
     GlobalDataStorage globalDataStorage(LhotseProperties properties) {
-        return new GlobalDataStorage(properties.getConfigRoot());
+        return new GlobalDataStorage(properties.getConfigRoot(), properties.getWatchUpdateFileIntervalMs());
     }
 }

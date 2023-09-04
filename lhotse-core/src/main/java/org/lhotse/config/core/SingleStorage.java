@@ -7,7 +7,7 @@ import java.util.Optional;
  *
  * @param <Config> 对应类
  */
-public interface SingleStorage<Config extends ISingleStorage> {
+public interface SingleStorage<Config> {
 
     /**
      * 获取配置表数据
@@ -22,7 +22,7 @@ public interface SingleStorage<Config extends ISingleStorage> {
     }
 }
 
-class SingleStorageImpl<Config extends ISingleStorage> implements SingleStorage<Config> {
+class SingleStorageImpl<Config> implements SingleStorage<Config> {
     private final Class<Config> clazz;
     private final GlobalDataStorage globalDataStorage;
 

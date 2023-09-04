@@ -12,7 +12,7 @@ public class StorageFactory {
         return new StorageImpl<>(clazz, globalDataStorage);
     }
 
-    public <Config extends ISingleStorage> SingleStorage<Config> createSingle(Class<Config> clazz) {
+    public <Config> SingleStorage<Config> createSingle(Class<Config> clazz) {
         return new SingleStorageImpl<>(clazz, globalDataStorage);
     }
 }

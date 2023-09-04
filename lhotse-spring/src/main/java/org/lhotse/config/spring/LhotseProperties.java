@@ -14,4 +14,8 @@ public class LhotseProperties {
      * 配置表路径
      */
     private String configRoot;
+    /**
+     * 文件监听间隔（ms）
+     */
+    private long watchUpdateFileIntervalMs = 5000L;
 }

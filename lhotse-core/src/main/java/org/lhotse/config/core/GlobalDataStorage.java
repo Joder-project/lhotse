@@ -1,25 +1,36 @@
 package org.lhotse.config.core;
 
+import com.sun.nio.file.ExtendedWatchEventModifier;
+import lombok.extern.slf4j.Slf4j;
 import org.lhotse.config.core.annotations.Custom;
 import org.lhotse.config.core.annotations.SingleConfig;
 import org.lhotse.config.core.annotations.StorageConfig;
 
 import java.io.File;
 import java.lang.reflect.RecordComponent;
+import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * 保存全局配置表数据
  */
+@Slf4j
 public class GlobalDataStorage {
 
     /**
      * 配置表根路径
      */
     final String basePath;
+    /**
+     * 监听文件变化间隔
+     */
+    final long watchUpdateFileIntervalMs;
 
     volatile TypeInfoParse typeInfoParse;
 
@@ -27,8 +38,11 @@ public class GlobalDataStorage {
 
     static final ReadWriteLock Lock = new ReentrantReadWriteLock();
 
-    public GlobalDataStorage(String basePath) {
+    volatile Thread watchThread;
+
+    public GlobalDataStorage(String basePath, long watchUpdateFileIntervalMs) {
         this.basePath = basePath;
+        this.watchUpdateFileIntervalMs = watchUpdateFileIntervalMs;
     }
 
     /**
@@ -37,6 +51,72 @@ public class GlobalDataStorage {
     public void init(Set<Class<?>> types) {
         this.typeInfoParse = new TypeInfoParse(basePath, types);
         refresh(types);
+        this.watchThread = new Thread(() -> {
+            try {
+                watchFile();
+            } catch (Exception ex) {
+                log.error("监听文件异常", ex);
+            }
+        });
+        this.watchThread.setName("config-watch-thread");
+        this.watchThread.setDaemon(true);
+    }
+
+    public void close() {
+        if (this.watchThread != null) {
+            this.watchThread.interrupt();
+        }
+    }
+
+    void watchFile() throws Exception {
+        var watchFile = new File(basePath);
+
+        try (WatchService watchService = FileSystems.getDefault().newWatchService()) {
+            watchFile.toPath().register(watchService, new WatchEvent.Kind[]{
+                    StandardWatchEventKinds.ENTRY_CREATE,
+                    StandardWatchEventKinds.ENTRY_DELETE,
+                    StandardWatchEventKinds.ENTRY_MODIFY
+            }, ExtendedWatchEventModifier.FILE_TREE);
+            while (!Thread.currentThread().isInterrupted()) {
+                var key = watchService.poll(watchUpdateFileIntervalMs, TimeUnit.SECONDS);
+                if (key == null) {
+                    continue;
+                }
+                Set<String> paths = new HashSet<>();
+                for (WatchEvent<?> event : key.pollEvents()) {
+                    var kind = event.kind();
+                    if (kind == StandardWatchEventKinds.OVERFLOW) {
+                        continue;
+                    }
+                    var context = (Path) event.context();
+                    if (kind == StandardWatchEventKinds.ENTRY_MODIFY) {
+                        paths.add(context.toFile().getAbsolutePath());
+                    }
+                }
+                key.reset();
+                if (!paths.isEmpty()) {
+                    try {
+                        refreshForPath(paths);
+                    } catch (Exception ex) {
+                        log.error("更新文件失败", ex);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 根据路径更新
+     */
+    void refreshForPath(Set<String> changePaths) {
+        refresh(changePaths.stream().map(e -> typeInfoParse.typeInfoMap.get(e))
+                .filter(Objects::nonNull)
+                .flatMap(type -> {
+                    if (type instanceof MultiTypeInfo multiTypeInfo) {
+                        return Stream.of(multiTypeInfo.clazz());
+                    }
+                    return ((SingleTypeInfo) type).classes().stream();
+                }).collect(Collectors.toUnmodifiableSet()));
     }
 
     /**
@@ -87,7 +167,7 @@ public class GlobalDataStorage {
     }
 
     @SuppressWarnings("unchecked")
-    <Config extends ISingleStorage> Optional<Config> getSingleConfig(Class<Config> clazz) {
+    <Config> Optional<Config> getSingleConfig(Class<Config> clazz) {
         var container = dataContainer.get();
         if (!container.singleConfigData.containsKey(clazz)) {
             return Optional.empty();
