@@ -17,7 +17,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @SupportedAnnotationTypes("org.lhotse.config.spring.GenerateStorage")
-@SupportedSourceVersion(SourceVersion.RELEASE_17)
+@SupportedSourceVersion(SourceVersion.RELEASE_21)
 @AutoService(Processor.class)
 public class SpringStorageProcessor extends AbstractProcessor {
 
