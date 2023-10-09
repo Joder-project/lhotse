@@ -3,7 +3,9 @@ package org.lhotse.config.core;
 import org.lhotse.config.core.annotations.SingleConfig;
 import org.lhotse.config.core.exception.LhotseException;
 
-import java.lang.reflect.Constructor;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.RecordComponent;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -46,8 +48,9 @@ class DataContainer {
 
     /**
      * 读取原始数据
-     * @param configs 文件路径对应类
-     * @param typeInfo 类的配置信息
+     *
+     * @param configs      文件路径对应类
+     * @param typeInfo     类的配置信息
      * @param oldContainer 旧数据
      */
     record StepWithRead(Map<String, TypeInfo> configs, Map<Class<?>, ConfigTypeInfo> typeInfo,
@@ -169,6 +172,8 @@ class DataContainer {
     }
 
     static class ConfigData {
+
+        static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
         /**
          * 对应类
          */
@@ -178,6 +183,8 @@ class DataContainer {
 
         final Map<String, String> rawData;
         Map<String, Object> properties;
+
+        final MethodHandle constructor;
         /**
          * 对应数据
          */
@@ -188,6 +195,7 @@ class DataContainer {
             this.fieldInfos = fieldInfos;
             this.rawData = raw;
             this.properties = initNormalField(raw);
+            this.constructor = gerConstruct(clazz);
         }
 
         Map<String, Object> initNormalField(Map<String, String> raw) {
@@ -197,6 +205,21 @@ class DataContainer {
                 properties.put(fieldInfo.name(), fieldInfo.getRealValue(value));
             });
             return properties;
+        }
+
+        MethodHandle gerConstruct(Class<?> clazz) {
+            var recordComponents = clazz.getRecordComponents();
+            Class<?>[] argsType = new Class<?>[recordComponents.length];
+            int i = 0;
+            for (RecordComponent recordComponent : recordComponents) {
+                argsType[i] = recordComponent.getType();
+                i++;
+            }
+            try {
+                return LOOKUP.findConstructor(clazz, MethodType.methodType(void.class, argsType));
+            } catch (Throwable ex) {
+                throw new LhotseException("获取构造方法失败", ex);
+            }
         }
 
         @SuppressWarnings("unchecked")
@@ -212,17 +235,14 @@ class DataContainer {
         Object inject() {
             var recordComponents = clazz.getRecordComponents();
             Object[] args = new Object[recordComponents.length];
-            Class<?>[] argsType = new Class<?>[recordComponents.length];
             int i = 0;
             for (RecordComponent recordComponent : recordComponents) {
                 args[i] = properties.get(recordComponent.getName());
-                argsType[i] = recordComponent.getType();
                 i++;
             }
             try {
-                Constructor<?> constructor = clazz.getDeclaredConstructor(argsType);
-                return constructor.newInstance(args);
-            } catch (Exception ex) {
+                return constructor.invoke(args);
+            } catch (Throwable ex) {
                 throw new LhotseException("生成对象异常", ex);
             }
 

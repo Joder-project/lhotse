@@ -73,7 +73,7 @@ class CustomFieldInfo extends NormalFieldInfo {
         super(name, type);
         try {
             this.convertor = convertor.getDeclaredConstructor().newInstance();
-        } catch (Exception ex) {
+        } catch (Throwable ex) {
             throw new LhotseException("初始化自定义解析器错误", ex);
         }
     }
